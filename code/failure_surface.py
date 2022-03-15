@@ -42,7 +42,7 @@ def modified_mises(mat, eps):
     return eeq
 
 
-def iterate_failure_surface(f, mat, N=1000):
+def iterate_failure_surface(f, mat, N=100):
 
     thetas = np.linspace(0, 2 * np.pi, N)
     eps = np.array([np.cos(thetas), np.sin(thetas), np.zeros(N)]).T
@@ -60,9 +60,13 @@ def iterate_failure_surface(f, mat, N=1000):
 
 
 def main():
-    mat = Material(nu=0.0)
-    points = iterate_failure_surface(modified_mises, mat)
+    for nu in [0.0, 0.1, 0.2, 0.3, 0.4]:
+        mat = Material(nu=nu)
+        points = iterate_failure_surface(modified_mises, mat)
+        plt.plot(*points, label=str(nu))
 
+    plt.legend()
+    
     ax = plt.gca()
     # Set bottom and left spines as x and y axes of coordinate system
     ax.spines['bottom'].set_position('zero')
@@ -72,7 +76,6 @@ def main():
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    plt.plot(*points)
     plt.grid()
     plt.show()
 
