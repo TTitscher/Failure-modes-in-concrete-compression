@@ -109,7 +109,7 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
     opts["snes_linesearch_type"] = linesearch
     if iterative:
         opts["solve_ksp_type"] = "gmres"
-        opts["ksp_rtol"] = 1.0e-14
+        opts["ksp_rtol"] = 1.0e-10
         opts["pc_type"] = "gamg"
 
         # Use Chebyshev smoothing for multigrid

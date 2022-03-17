@@ -12,7 +12,6 @@ import helper as h
 
 import sys
 
-
 class UnitSquareExperiment:
     def __init__(self, N):
         self.mesh = df.mesh.create_unit_square(
@@ -43,11 +42,14 @@ class UnitSquareExperiment:
         b_dofs_o = df.fem.locate_dofs_topological(V.sub(1), dim - 1, b_facets_o)
         # print(b_dofs_o)
 
-        return [
+        self.bcs = [
             df.fem.dirichletbc(PETSc.ScalarType(0), b_dofs_l, V.sub(0)),
             df.fem.dirichletbc(self.u_bc, b_dofs_r, V.sub(0)),
             df.fem.dirichletbc(PETSc.ScalarType(0), b_dofs_o, V.sub(1)),
         ]
+
+        self.load_dofs = b_dofs_r
+        return self.bcs
 
     def set_bcs(self, value):
         self.u_bc.value = value
@@ -110,7 +112,6 @@ class MechanicsProblem:
         # prepare strain evaluation
         map_c = mesh.topology.index_map(mesh.topology.dim)
         num_cells = map_c.size_local + map_c.num_ghosts
-        assert map_c.num_ghosts == 0  # no ghost cells, right?
         self.cells = np.arange(0, num_cells, dtype=np.int32)
 
         basix_celltype = getattr(basix.CellType, mesh.topology.cell_type.name)
@@ -121,6 +122,8 @@ class MechanicsProblem:
         # bcs and stuff
         self.nullspace = h.nullspace_2d(self.V)
         self.bcs = self.experiment.bcs(self.V)
+
+        self.residual = df.fem.petsc.create_vector(self.R) # stored
 
     def eps(self, u):
         e = ufl.sym(ufl.grad(u))
@@ -153,13 +156,19 @@ class MechanicsProblem:
             b_local.set(0.0)
         df.fem.petsc.assemble_vector(b, self.R)
 
-        # Apply boundary condition
+        b.copy(self.residual)
+
         df.fem.apply_lifting(b, [self.dR], bcs=[self.bcs], x0=[x], scale=-1.0)
         b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         df.fem.set_bc(b, self.bcs, x, -1.0)
 
 
-experiment = UnitSquareExperiment(10)
+try:
+    N = int(sys.argv[1])
+except IndexError:
+    N = 10
+
+experiment = UnitSquareExperiment(N)
 mat = HookesLaw(20000, 0.2)
 problem = MechanicsProblem(experiment, mat)
 
@@ -169,12 +178,43 @@ solver = h.create_solver(problem)
 f = df.io.XDMFFile(experiment.mesh.comm, "displacements.xdmf", "w")
 f.write_mesh(experiment.mesh)
 
+
+class LoadSensor:
+    def __init__(self, dofs, residual, name="load"):
+        self.dofs, self.residual, name = dofs, residual, name
+        self.comm = MPI.COMM_WORLD
+
+    def measure(self):
+        with self.residual.localForm() as lf:
+            local_load = np.sum(lf[self.dofs])
+
+        return self.comm.reduce(local_load, op=MPI.SUM, root=0)
+
+class DisplacementSensor:
+    def __init__(self, bc, name="disp"):
+        self.bc, name = bc, name
+
+    def measure(self):
+        return float(self.bc.g.value) # .value itself is a 0-dim np.array
+
+
+load_sensor = LoadSensor(experiment.load_dofs, problem.residual)
+disp_sensor = DisplacementSensor(experiment.bcs[1])
+
 for i, u_bc in enumerate(np.linspace(0, 0.1, 11)):
     print(f"load step {i} with {u_bc = }")
     experiment.set_bcs(u_bc)
     # solver.setInitialGuess(problem.u.vector)
     solver.solve(None, problem.u.vector)
     f.write_function(problem.u, u_bc)
+
+    # problem.F(None, problem.u.vector, residual, apply_bc=False)
+    load = load_sensor.measure()
+    disp = disp_sensor.measure()
+
+    if MPI.COMM_WORLD.rank == 0:
+        print(f"{load = }")
+        print(f"{disp = }")
 
 u = problem.u
 
@@ -189,16 +229,4 @@ for x, u_fem in zip(points, u_values):
         print(u_correct, u_fem)
 
 #
-p = pv.Plotter()
-topology, cells, geometry = df.plot.create_vtk_mesh(u.function_space)
-grid = pv.UnstructuredGrid(topology, cells, geometry)
-actor = p.add_mesh(grid, style="wireframe", color="w")
-values = np.zeros((geometry.shape[0], 3))
-values[:, : len(u)] = u.x.array.reshape(geometry.shape[0], len(u))
-grid["u"] = values
-grid.set_active_vectors("u")
-warped = grid.warp_by_vector("u", factor=10)
 
-actor = p.add_mesh(warped, style="surface")
-p.show_axes()
-# p.show()
