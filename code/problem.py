@@ -13,7 +13,7 @@ class MechanicsProblem:
         mesh = experiment.mesh
 
         # define function spaces
-        q_deg = deg+1 if q_deg is None else q_deg
+        q_deg = deg + 1 if q_deg is None else q_deg
 
         self.V = df.fem.VectorFunctionSpace(mesh, ("P", deg))
         QV = ufl.VectorElement(
@@ -65,47 +65,24 @@ class MechanicsProblem:
         self.solver = None
 
     def evaluate_constitutive_law(self):
-        self.strain_expr = df.fem.Expression(self.material.eps(self.u), self.q_points)
         self.strain = self.strain_expr.eval(self.cells)
-        sigma, dsigma = self.material.evaluate(self.strain)
-        #
-        # VSigma = self.q_sigma.function_space
-        # with self.q_sigma.vector.localForm() as sigma_local:
-        #     sigma_local.setBlockSize(VSigma.dofmap.bs)
-        #     sigma_local.setValuesBlocked(VSigma.dofmap.list.array, sigma, addv=PETSc.InsertMode.INSERT)
-        #
-        # VdSigma = self.q_dsigma.function_space
-        # with self.q_dsigma.vector.localForm() as dsigma_local:
-        #     dsigma_local.setBlockSize(VdSigma.dofmap.bs)
-        #     dsigma_local.setValuesBlocked(VdSigma.dofmap.list.array, dsigma, addv=PETSc.InsertMode.INSERT)
-
-        self.q_sigma.x.array[:] = sigma
-        self.q_dsigma.x.array[:] = dsigma
-        # self.q_sigma.x.scatter_forward()
-        # self.q_dsigma.x.scatter_forward()
+        self.q_sigma.x.array[:], self.q_dsigma.x.array[:] = (
+            sigma,
+            dsigma,
+        ) = self.material.evaluate(self.strain)
 
     def update(self):
         self.strain = self.strain_expr.eval(self.cells)
         self.material.update(self.strain)
 
-    def J(self, x: PETSc.Vec, A: PETSc.Mat, P=None):
+    def J(self, snes, x: PETSc.Vec, A: PETSc.Mat, P=None):
         """Assemble the Jacobian matrix."""
         A.zeroEntries()
         df.fem.petsc.assemble_matrix(A, self.dR, bcs=self.bcs)
         A.assemble()
         A.setNearNullSpace(self.nullspace)
 
-    def form(self, x: PETSc.Vec):
-        """This function is called before the residual or Jacobian is
-        computed. This is usually used to update ghost values.
-        Parameters
-        ----------
-        x
-            The vector containing the latest solution
-        """
-        x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-    def F(self, x: PETSc.Vec, b: PETSc.Vec):
+    def F(self, snes, x: PETSc.Vec, b: PETSc.Vec):
         """Assemble the residual F into the vector b."""
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         x.copy(self.u.vector)
@@ -126,21 +103,8 @@ class MechanicsProblem:
         df.fem.set_bc(b, self.bcs, x, -1.0)
 
     def solve(self):
-        # self.solver = None
         if self.solver is None:
-            self.a = self.dR
-            self.L = self.R
-            self.solver = df.nls.petsc.NewtonSolver(self.experiment.mesh.comm, self)
-            self.solver.error_on_nonconvergence=False
-            self.solver.max_it = 10
-            # self.solver.rtol = 1.e-9
-            # self.solver.atol = 1.e-9
-            ksp = self.solver.krylov_solver
-            # ksp.setType("gmres")
-            # ksp.setTolerances(rtol=1.e-10)
-            # ksp.getPC().setType("gamg")
-            # ksp.setMonitor(
-                # lambda _, its, rnorm: print(f"    krylov: {its}, |R|/|R0| = {rnorm:6.3e}")
-        # )
+            self.solver = _h.create_solver(self)
 
-        return self.solver.solve(self.u)
+        self.solver.solve(None, self.u.vector)
+        return self.solver.its, self.solver.converged

@@ -139,16 +139,11 @@ class LocalDamage(HookesLaw):
         n_gauss = len(eps)
 
         eeq, deeq = modified_mises_strain_norm(self, eps)
-        # # print(eeq.shape)
         kappa, dkappa = self.kappa_kkt(eeq)
         w, dw = self.dmg(self, kappa)
-        # print(w)
-        # print(w)
        
         C = self.C
         sigma = eps @ C * (1 - w)[:, None]
-        # dsigma = -eps @ C * dw[:, None] * dkappa[:, None]
-        # print(n_gauss)
         dsigma = np.tile(C.flatten(), (n_gauss, 1)) * (1 - w)[:, None]
         
         dsigma2 = -eps @ C * dw[:, None] * dkappa[:, None]
@@ -156,18 +151,7 @@ class LocalDamage(HookesLaw):
         for i in range(n_gauss):
             dsigma[i,:] += np.outer(deeq[i], dsigma2[i]).flatten()
 
-        # print(deeq.shape)
-
-        # B = np.outer(dsigma2[:, :, None] , deeq[:, :, None])
-        
-
-
-        # dsigma2 = dsigma.flatten() *
-
-        # print(sigma.shape)
-        # print(B.shape)
         return sigma.flatten(), dsigma.flatten()
-        # return super().evaluate(strains)
 
     def kappa_kkt(self, strain_norm):
         if self.kappa is None:
@@ -181,16 +165,3 @@ class LocalDamage(HookesLaw):
         eps = strains.reshape(-1, 3)
         eeq, deeq = modified_mises_strain_norm(self, eps)
         self.kappa, dkappa = self.kappa_kkt(eeq)
-
-    # def evaluate(self, strains):
-    #     kappa = self.kappa_kkt(e)
-    #     dkappa_de = (e >= kappa).astype(int)
-    #
-    #     eps = eps_flat.reshape(-1, 3)
-    #     self.sigma, self.dsigma_deps, self.dsigma_de = hooke(
-    #         self, eps, kappa, dkappa_de
-    #     )
-    #     self.eeq, self.deeq = modified_mises_strain_norm(self, eps_flat)
-    #
-    # def update(self, e):
-    #     self.kappa = self.kappa_kkt(e)
