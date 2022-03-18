@@ -75,21 +75,30 @@ class MechanicsProblem:
         self.strain = self.strain_expr.eval(self.cells)
         self.material.update(self.strain)
 
-    def J(self, snes, x: PETSc.Vec, A: PETSc.Mat, P=None):
-        """Assemble the Jacobian matrix."""
-        A.zeroEntries()
-        df.fem.petsc.assemble_matrix(A, self.dR, bcs=self.bcs)
-        A.assemble()
-        A.setNearNullSpace(self.nullspace)
-
-    def F(self, snes, x: PETSc.Vec, b: PETSc.Vec):
-        """Assemble the residual F into the vector b."""
+    def form(self, x: PETSc.Vec):
+        """This function is called before the residual or Jacobian is
+        computed. This is usually used to update ghost values.
+        Parameters
+        ----------
+        x
+            The vector containing the latest solution
+        """
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         x.copy(self.u.vector)
         self.u.vector.ghostUpdate(
             addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD
         )
         self.evaluate_constitutive_law()
+
+    def J(self, x: PETSc.Vec, A: PETSc.Mat, P=None):
+        """Assemble the Jacobian matrix."""
+        A.zeroEntries()
+        df.fem.petsc.assemble_matrix(A, self.dR, bcs=self.bcs)
+        A.assemble()
+        A.setNearNullSpace(self.nullspace)
+
+    def F(self, x: PETSc.Vec, b: PETSc.Vec):
+        """Assemble the residual F into the vector b."""
 
         # Reset the residual vector
         with b.localForm() as b_local:
@@ -104,7 +113,12 @@ class MechanicsProblem:
 
     def solve(self):
         if self.solver is None:
-            self.solver = _h.create_solver(self)
+            self.a = self.dR
+            self.L = self.R
+            self.solver = df.nls.petsc.NewtonSolver(self.experiment.mesh.comm, self)
+            # self.solver = _h.create_solver(self)
 
-        self.solver.solve(None, self.u.vector)
-        return self.solver.its, self.solver.converged
+        return self.solver.solve(self.u)
+
+        # self.solver.solve(None, self.u.vector)
+        # return self.solver.its, self.solver.converged

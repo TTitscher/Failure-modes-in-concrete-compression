@@ -28,13 +28,13 @@ class MeasurementSystem(dict):
 
 def main():
 
-    experiment = _exp.UnitSquareExperiment(10)
+    experiment = _exp.UnitSquareExperiment(50)
     mat = _mat.LocalDamage(E=20000., nu=0.2,ft=2,beta=100, constraint=_mat.Constraint.PLANE_STRAIN)
     # mat = _mat.HookesLaw(E=20000., nu=0.2, constraint=_mat.Constraint.PLANE_STRESS)
-    problem = MechanicsProblem(experiment, mat, deg=1)
+    problem = MechanicsProblem(experiment, mat, deg=1, q_deg=1)
     problem.update()
     print(mat.kappa.shape)
-    mat.kappa[300] = mat.ft/mat.E * 3
+    # mat.kappa[300] = mat.ft/mat.E * 3
     # return
 
     storage = MeasurementSystem()
@@ -43,23 +43,24 @@ def main():
 
     f = df.io.XDMFFile(experiment.mesh.comm, "displacements.xdmf", "w")
     f.write_mesh(experiment.mesh)
+
+    snes, snes_solve = _h.create_solver(problem, iterative=False, monitor_krylov=True)
     
-    for i, u_bc in enumerate(np.linspace(0., 0.01, 10)):
+    for i, u_bc in enumerate(np.linspace(0., 0.01, 100)):
     # for i, u_bc in enumerate(np.linspace(0.06, 0.07, 11)):
         print0(f"load step {i} with {u_bc = }")
         # problem.u.x.array[:] = 0.
         experiment.set_bcs(u_bc)
 
         # solver.setInitialGuess(problem.u)
-        it, converged = problem.solve()
-        problem.u.x.scatter_forward()
+        # it, converged = problem.solve()
+        it, converged = snes_solve()
+        print(f"{it, converged}")
         if not converged:
             break
-        # print(r)
-        # if solver.its == 20:
-            # exit()
+
         f.write_function(problem.u, u_bc)
-        # problem.update()
+        problem.update()
         storage.measure()
 
     if experiment.mesh.comm.rank == 0:

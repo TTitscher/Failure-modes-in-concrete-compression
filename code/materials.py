@@ -127,13 +127,15 @@ class LocalDamage(HookesLaw):
     # damage law
     dmg: None = damage_exponential
 
-    # @profile
     def evaluate(self, strains):
         """
         sigma = (1-w(k(|eps|))) * C : eps
 
-        dsigma/deps = C - C : eps * dw/dk * dk/d|eps| * d|eps|/deps
-
+        dsigma/deps = (1-w) C - C : eps * dw/dk * dk/d|eps| X d|eps|/deps
+                                ---------------------------   -----------
+                                           P1 \in R3x1          \in R3x1
+                                -----------------------------------------
+                                              row_wise_outer \in R3x3
         """
         eps = strains.reshape(-1, 3)
         n_gauss = len(eps)
@@ -146,12 +148,13 @@ class LocalDamage(HookesLaw):
         sigma = eps @ C * (1 - w)[:, None]
         dsigma = np.tile(C.flatten(), (n_gauss, 1)) * (1 - w)[:, None]
         
-        dsigma2 = -eps @ C * dw[:, None] * dkappa[:, None]
+        P1 = eps @ C * dw[:, None] * dkappa[:, None]
+        
+        # dont ask... https://stackoverflow.com/questions/48498662/numpy-row-wise-outer-product-of-two-matrices
+        row_wise_outer = np.matmul(deeq[:, :, None], P1[:, None, :])
 
-        for i in range(n_gauss):
-            dsigma[i,:] += np.outer(deeq[i], dsigma2[i]).flatten()
-
-        return sigma.flatten(), dsigma.flatten()
+        # print(row_wise_outer.shape)
+        return sigma.flat, dsigma.flatten() - row_wise_outer.flat
 
     def kappa_kkt(self, strain_norm):
         if self.kappa is None:

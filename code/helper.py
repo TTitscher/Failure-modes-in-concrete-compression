@@ -103,14 +103,22 @@ def eval_function_at_points(f, points):
 def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=False):
     snes = PETSc.SNES().create()
 
+    def snes_J(snes, x, A, P):
+        """Assemble the Jacobian matrix."""
+        problem.J(x, A)
+
+    def snes_F(snes, x, b):
+        problem.form(x)
+        problem.F(x, b)
+ 
     b = df.fem.petsc.create_vector(problem.R)
     J = df.fem.petsc.create_matrix(problem.dR)
-    snes.setFunction(problem.F, b)
-    snes.setJacobian(problem.J, J)
+    snes.setFunction(snes_F, b)
+    snes.setJacobian(snes_J, J)
 
     opts = PETSc.Options()
 
-    # opts["snes_linesearch_type"] = linesearch
+    opts["snes_linesearch_type"] = linesearch
     if iterative:
         opts["solve_ksp_type"] = "gmres"
         opts["ksp_rtol"] = 1.0e-10
@@ -140,4 +148,9 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
             lambda _, its, rnorm: print(f"    krylov: {its}, |R|/|R0| = {rnorm:6.3e}")
         )
 
-    return snes
+    def solve():
+        snes.solve(None, problem.u.vector)
+        return snes.its, snes.converged
+
+
+    return snes, solve
