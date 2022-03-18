@@ -20,7 +20,11 @@ solver = _h.create_solver(problem)
 
 u_bc = 42.0
 experiment.set_bcs(u_bc)
-solver.solve(None, problem.u.vector)
+
+df.cpp.log.set_log_level(df.cpp.log.LogLevel.INFO)
+problem.solve()
+df.cpp.log.set_log_level(df.cpp.log.LogLevel.WARNING)
+# solver.solve(None, problem.u.vector)
 
 u = problem.u
 
@@ -30,7 +34,7 @@ u = problem.u
 x_check = np.linspace(0, 1, 42)
 x, y = np.meshgrid(x_check, x_check)
 xs = np.vstack([x.flat, y.flat, np.zeros(len(x.flat))]).T
-u_fem, points = _h.eval_function_at_points(u, xs)
+u_fem, xs = _h.eval_function_at_points(u, xs)
 
 u_ref = np.array([xs[:, 0] * u_bc, -mat.nu * xs[:, 1] * u_bc]).T
 

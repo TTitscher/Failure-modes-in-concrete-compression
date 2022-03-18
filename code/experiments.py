@@ -32,7 +32,7 @@ class UnitSquareExperiment(Experiment):
         )
         self.u_bc = df.fem.Constant(self.mesh, 0.0)
 
-    def bcs(self, V):
+    def get_bcs(self, V):
         def left(x):
             return np.isclose(x[0], 0)
 

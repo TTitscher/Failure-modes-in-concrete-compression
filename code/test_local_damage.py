@@ -28,39 +28,42 @@ class MeasurementSystem(dict):
 
 def main():
 
-    experiment = _exp.UnitSquareExperiment(3)
-    mat = _mat.LocalDamage(E=20000., nu=0.0,ft=4,beta=350, constraint=_mat.Constraint.PLANE_STRAIN)
+    experiment = _exp.UnitSquareExperiment(10)
+    mat = _mat.LocalDamage(E=20000., nu=0.2,ft=2,beta=100, constraint=_mat.Constraint.PLANE_STRAIN)
+    # mat = _mat.HookesLaw(E=20000., nu=0.2, constraint=_mat.Constraint.PLANE_STRESS)
     problem = MechanicsProblem(experiment, mat, deg=1)
-
-    solver = _h.create_solver(problem, linesearch="bt")
-
 
     storage = MeasurementSystem()
     storage.add(_exp.LoadSensor(experiment.load_dofs, problem.residual, name="load"))
     storage.add(_exp.DisplacementSensor(experiment.bcs[1], name="disp"))
 
-    experiment.set_bcs(mat.ft/mat.E)
-    solver.solve(None, problem.u.vector)
-    problem.update()
+    f = df.io.XDMFFile(experiment.mesh.comm, "displacements.xdmf", "w")
+    f.write_mesh(experiment.mesh)
     
-    experiment.set_bcs(mat.ft/mat.E*1.01)
-    solver.solve(None, problem.u.vector)
-    return
-
-    for i, u_bc in enumerate(np.linspace(0, 0.001, 51)):
-        print(f"load step {i} with {u_bc = }")
+    df.cpp.log.set_log_level(df.cpp.log.LogLevel.INFO)
+    for i, u_bc in enumerate(np.linspace(0., 0.01, 104)):
+    # for i, u_bc in enumerate(np.linspace(0.06, 0.07, 11)):
+        print0(f"load step {i} with {u_bc = }")
+        # problem.u.x.array[:] = 0.
         experiment.set_bcs(u_bc)
-        # solver.setInitialGuess(problem.u)
-        solver.solve(None, problem.u.vector)
-        if solver.its == 20:
-            exit()
-        problem.update()
 
-        # problem.F(None, problem.u.vector, residual, apply_bc=False)
+        # solver.setInitialGuess(problem.u)
+        it, converged = problem.solve()
+        problem.u.x.scatter_forward()
+        if not converged:
+            break
+        # print(r)
+        # if solver.its == 20:
+            # exit()
+        f.write_function(problem.u, u_bc)
+        # problem.update()
         storage.measure()
 
-    plt.plot(storage["disp"], storage["load"])
-    plt.show()
+    df.cpp.log.set_log_level(df.cpp.log.LogLevel.WARNING)
+
+    if experiment.mesh.comm.rank == 0:
+        plt.plot(storage["disp"], storage["load"], "-kx")
+        plt.show()
 
 if __name__ == "__main__":
     main()
