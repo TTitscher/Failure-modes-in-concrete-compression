@@ -1,9 +1,13 @@
 import dolfinx as df
 from petsc4py import PETSc
+from mpi4py import MPI
 from contextlib import ExitStack
 import numpy as np
 from enum import Enum
 
+def print0(*args, **kwargs):
+    if MPI.COMM_WORLD.rank == 0:
+        print(*args, **kwargs)
 
 def nullspace_2d(V):
     """Build PETSc nullspace for elasticity"""
@@ -106,7 +110,7 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
 
     opts = PETSc.Options()
 
-    opts["snes_linesearch_type"] = linesearch
+    # opts["snes_linesearch_type"] = linesearch
     if iterative:
         opts["solve_ksp_type"] = "gmres"
         opts["ksp_rtol"] = 1.0e-10
@@ -122,10 +126,10 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
 
     snes.setFromOptions()
     snes.setTolerances(atol=1.e-10, rtol=1.0e-10, max_it=20)
-    # snes.getKSP().setTolerances(rtol=1.e-10)
 
     if not iterative:
         snes.getKSP().setType("preonly")
+        snes.getKSP().setTolerances(rtol=1.e-10)
         snes.getKSP().getPC().setType("lu")
 
     snes.setMonitor(
