@@ -116,7 +116,6 @@ class MechanicsProblem:
             self.a = self.dR
             self.L = self.R
             self.solver = df.nls.petsc.NewtonSolver(self.experiment.mesh.comm, self)
-            # self.solver = _h.create_solver(self)
 
         return self.solver.solve(self.u)
 

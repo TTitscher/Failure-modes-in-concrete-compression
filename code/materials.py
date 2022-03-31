@@ -84,32 +84,6 @@ def modified_mises_strain_norm(mat, eps):
     return eeq, deeq
 
 
-def hooke(mat, eps, kappa, dkappa_de):
-    """
-    mat:
-        material parameters
-    eps:
-        vector of Nx3 where each of the N rows is a 2D strain in Voigt notation
-    kappa:
-        current value of the history variable kappa
-    dkappa_de:
-        derivative of kappa w.r.t the nonlocal equivalent strains e
-    """
-    E, nu = mat.E, mat.nu
-    l = E * nu / (1 + nu) / (1 - 2 * nu)
-    m = E / (2.0 * (1 + nu))
-    C = np.array([[2 * m + l, l, 0], [l, 2 * m + l, 0], [0, 0, m]])
-
-    w, dw = mat.dmg(mat, kappa)
-
-    sigma = eps @ C * (1 - w)[:, None]
-    dsigma_deps = np.tile(C.flatten(), (len(kappa), 1)) * (1 - w)[:, None]
-
-    dsigma_de = -eps @ C * dw[:, None] * dkappa_de[:, None]
-
-    return sigma, dsigma_deps, dsigma_de
-
-
 @dataclass
 class LocalDamage(HookesLaw):
     # tensile strength          [N/mm²]
@@ -143,7 +117,8 @@ class LocalDamage(HookesLaw):
         eeq, deeq = modified_mises_strain_norm(self, eps)
         kappa, dkappa = self.kappa_kkt(eeq)
         w, dw = self.dmg(self, kappa)
-       
+      
+        print(f"{np.max(w)}")
         C = self.C
         sigma = eps @ C * (1 - w)[:, None]
         dsigma = np.tile(C.flatten(), (n_gauss, 1)) * (1 - w)[:, None]
@@ -152,6 +127,7 @@ class LocalDamage(HookesLaw):
         
         # dont ask... https://stackoverflow.com/questions/48498662/numpy-row-wise-outer-product-of-two-matrices
         row_wise_outer = np.matmul(deeq[:, :, None], P1[:, None, :])
+        # row_wise_outer = np.matmul(P1[:, :, None], deeq[:, None, :])
 
         # print(row_wise_outer.shape)
         return sigma.flat, dsigma.flatten() - row_wise_outer.flat

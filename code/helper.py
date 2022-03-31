@@ -133,7 +133,7 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
         opts["mg_levels_ksp_chebyshev_esteig_steps"] = 20
 
     snes.setFromOptions()
-    snes.setTolerances(atol=1.e-10, rtol=1.0e-10, max_it=20)
+    snes.setTolerances(atol=1.e-10, rtol=1.0e-10, max_it=10)
 
     if not iterative:
         snes.getKSP().setType("preonly")
