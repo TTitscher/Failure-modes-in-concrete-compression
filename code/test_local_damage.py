@@ -1,9 +1,6 @@
 import dolfinx as df
 import numpy as np
 
-import pyvista as pv
-import pyvistaqt as pvqt
-
 import helper as _h  # underscore indicates custom stuff
 from helper import print0
 import experiments as _exp

@@ -3,9 +3,6 @@ import sys
 import dolfinx as df
 import numpy as np
 
-import pyvista as pv
-import pyvistaqt as pvqt
-
 import helper as _h  # underscore indicates custom stuff
 import experiments as _exp
 import materials as _mat
