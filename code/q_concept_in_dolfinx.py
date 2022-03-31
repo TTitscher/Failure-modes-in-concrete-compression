@@ -1,15 +1,19 @@
 import sys
+
 from mpi4py import MPI
 from petsc4py import PETSc
+import numpy as np
 
 import dolfinx as df
 import basix
 import ufl
-import numpy as np
+
 
 def print0(*args, **kwargs):
     if MPI.COMM_WORLD.rank == 0:
         print(*args, **kwargs)
+
+
 try:
     N = int(sys.argv[1])
 except IndexError:
@@ -46,13 +50,15 @@ num_gauss_global = mesh.comm.reduce(num_gauss_local, op=MPI.SUM, root=0)
 
 print0(f"{num_dofs_global  = }")
 print0(f"{num_gauss_global = }")
-    
+
 # define form
 dxm = ufl.dx(metadata={"quadrature_degree": q_deg, "quadrature_scheme": "default"})
+
 
 def eps(u):
     e = ufl.sym(ufl.grad(u))
     return ufl.as_vector((e[0, 0], e[1, 1], 2 * e[0, 1]))
+
 
 R = df.fem.form(ufl.inner(eps(u_), q_sigma) * dxm)
 dR = df.fem.form(ufl.inner(eps(du), ufl.dot(q_dsigma, eps(u_))) * dxm)
@@ -60,19 +66,20 @@ dR = df.fem.form(ufl.inner(eps(du), ufl.dot(q_dsigma, eps(u_))) * dxm)
 
 E, nu = 20000, 0.3
 
+
 def evaluate_constitutive_law(u):
-    """ 
-    magic part!  
+    """
+    magic part!
 
     Evaluates strain expression eps(u) on all quadrature points of all cells,
-    computes stresses sigma and their derivative dsigma on all quadrature 
+    computes stresses sigma and their derivative dsigma on all quadrature
     points and writes them into the appropriate functions q_sigma/q_dsigma.
 
     u:
         displacement field field
 
-    In "production", a lot of the code below should be executed only once, 
-    outside of this function. 
+    In "production", a lot of the code below should be executed only once,
+    outside of this function.
     """
     # prepare strain evaluation
     map_c = mesh.topology.index_map(mesh.topology.dim)
@@ -83,27 +90,25 @@ def evaluate_constitutive_law(u):
     q_points, wts = basix.make_quadrature(basix_celltype, q_deg)
     strain_expr = df.fem.Expression(eps(u), q_points)
 
-    # Actually compute a strain matrix containing one row per cell.  
+    # Actually compute a strain matrix containing one row per cell.
     strains = strain_expr.eval(cells)
     assert strains.shape[0] == num_cells
     assert strains.shape[1] == len(q_points) * 3
-    
+
     # Hookes law for plane stress
     C11 = E / (1.0 - nu * nu)
     C12 = C11 * nu
     C33 = C11 * 0.5 * (1.0 - nu)
     C = np.array([[C11, C12, 0.0], [C12, C11, 0.0], [0.0, 0.0, C33]])
 
-    # here _could_ be a loop over all quadrature points in 
+    # here _could_ be a loop over all quadrature points in
     # c++, mfront, numba, ...
     # For this simple case, we can evaluate it as one matrix operation.
     strain_matrix = strains.reshape((-1, 3))
     n_gauss = len(strain_matrix)
-    
+
     q_sigma.x.array[:] = (strain_matrix @ C).flatten()
     q_dsigma.x.array[:] = np.tile(C.flatten(), n_gauss)
-    
-
 
 
 r"""
@@ -118,6 +123,7 @@ Set up
 -----
 """
 
+
 def left(x):
     return np.isclose(x[0], 0.0)
 
@@ -128,6 +134,7 @@ def right(x):
 
 def origin(x):
     return np.logical_and(np.isclose(x[0], 0.0), np.isclose(x[1], 0.0))
+
 
 u_bc = df.fem.Constant(mesh, 0.0)  # expression for boundary displacement
 
@@ -159,13 +166,15 @@ def check_solution(u, u_bc_value):
 
     def eval_function_at_points(f, points):
         """
-        Evaluates `f` at `points`. Adapted from 
+        Evaluates `f` at `points`. Adapted from
         https://jorgensd.github.io/df-tutorial/chapter1/membrane_code.html
         """
         mesh = f.function_space.mesh
         tree = df.geometry.BoundingBoxTree(mesh, mesh.geometry.dim)
         cell_candidates = df.geometry.compute_collisions(tree, points)
-        colliding_cells = df.geometry.compute_colliding_cells(mesh, cell_candidates, points)
+        colliding_cells = df.geometry.compute_colliding_cells(
+            mesh, cell_candidates, points
+        )
 
         points_on_proc = []
         cells = []
@@ -200,8 +209,8 @@ f = df.io.XDMFFile(mesh.comm, "displacements.xdmf", "w")
 f.write_mesh(mesh)
 
 
-u_bc_max = 42.
-for t in np.linspace(0., 1., 5):
+u_bc_max = 42.0
+for t in np.linspace(0.0, 1.0, 5):
     # update value of Dirichlet BC
     u_bc.value = t * u_bc_max
 
@@ -226,13 +235,11 @@ for t in np.linspace(0., 1., 5):
     solver.setOperators(A)
 
     # Solve for the displacement increment du, apply it and udpate ghost values
-    du = df.fem.Function(V) # Should be outside of loop, instructive here.  
+    du = df.fem.Function(V)  # Should be outside of loop, instructive here.
     solver.solve(b, du.vector)
     u.x.array[:] -= du.x.array[:]
     u.x.scatter_forward()
 
-    # post processing 
+    # post processing
     check_solution(u, t * u_bc_max)
     f.write_function(u, t)
-
-
