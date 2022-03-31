@@ -9,6 +9,35 @@ def print0(*args, **kwargs):
     if MPI.COMM_WORLD.rank == 0:
         print(*args, **kwargs)
 
+def nullspace(V):
+    f = [nullspace_1d, nullspace_2d, nullspace_3d]
+    return f[V.dofmap.index_map_bs - 1](V)
+
+def nullspace_1d(V):
+    """Build PETSc nullspace for elasticity"""
+
+    # Create list of vectors for building nullspace
+    index_map = V.dofmap.index_map
+    bs = V.dofmap.index_map_bs
+    ns = [df.la.create_petsc_vector(index_map, bs)]
+
+    with ExitStack() as stack:
+        vec_local = [stack.enter_context(x.localForm()) for x in ns]
+        basis = [np.asarray(x) for x in vec_local]
+
+        # Get dof indices for each subspace (x and y dofs)
+        dofs = [V.sub(0).dofmap.list.array]
+
+        # Build the translational rigid body mode
+        basis[0][dofs[0]] = 1.0
+
+    # Orthonormalise the three vectors
+    df.la.orthonormalize(ns)
+    assert df.la.is_orthonormal(ns)
+
+    return PETSc.NullSpace().create(vectors=ns)
+
+
 def nullspace_2d(V):
     """Build PETSc nullspace for elasticity"""
 

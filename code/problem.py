@@ -8,8 +8,8 @@ import helper as _h  # underscore indicates custom stuff
 
 
 class MechanicsProblem:
-    def __init__(self, experiment, material, deg=1, q_deg=None):
-        self.experiment, self.material, self.deg = experiment, material, deg
+    def __init__(self, experiment, mat, deg=1, q_deg=None):
+        self.experiment, self.mat, self.deg = experiment, mat, deg
         mesh = experiment.mesh
 
         # define function spaces
@@ -17,14 +17,14 @@ class MechanicsProblem:
 
         self.V = df.fem.VectorFunctionSpace(mesh, ("P", deg))
         QV = ufl.VectorElement(
-            "Quadrature", mesh.ufl_cell(), q_deg, quad_scheme="default", dim=3
+            "Quadrature", mesh.ufl_cell(), q_deg, quad_scheme="default", dim=mat.qdim
         )
         QT = ufl.TensorElement(
             "Quadrature",
             mesh.ufl_cell(),
             q_deg,
             quad_scheme="default",
-            shape=(3, 3),
+            shape=(mat.qdim, mat.qdim),
         )
         VQV = df.fem.FunctionSpace(mesh, QV)
         VQT = df.fem.FunctionSpace(mesh, QT)
@@ -41,7 +41,7 @@ class MechanicsProblem:
 
         # f = ufl.as_vector((0, 0))
 
-        eps = material.eps
+        eps = mat.eps
         R = ufl.inner(eps(u_), self.q_sigma) * self.dxm
         dR = ufl.inner(eps(du), ufl.dot(self.q_dsigma, eps(u_))) * self.dxm
 
@@ -58,7 +58,7 @@ class MechanicsProblem:
         self.evaluate_constitutive_law()
 
         # bcs and stuff
-        self.nullspace = _h.nullspace_2d(self.V)
+        self.nullspace = _h.nullspace(self.V)
         self.bcs = self.experiment.get_bcs(self.V)
 
         self.residual = df.fem.petsc.create_vector(self.R)  # stored
@@ -69,14 +69,14 @@ class MechanicsProblem:
             self.strain = self.strain_expr.eval(self.cells)
 
         with df.common.Timer("evaluate constitutive law"):
-            sigma, dsigma =  self.material.evaluate(self.strain)
+            sigma, dsigma =  self.mat.evaluate(self.strain)
         
         with df.common.Timer("assign q space"):
             self.q_sigma.x.array[:], self.q_dsigma.x.array[:] = sigma, dsigma
 
     def update(self):
         self.strain = self.strain_expr.eval(self.cells)
-        self.material.update(self.strain)
+        self.mat.update(self.strain)
 
     def form(self, x: PETSc.Vec):
         """This function is called before the residual or Jacobian is
@@ -121,6 +121,3 @@ class MechanicsProblem:
             self.solver = df.nls.petsc.NewtonSolver(self.experiment.mesh.comm, self)
 
         return self.solver.solve(self.u)
-
-        # self.solver.solve(None, self.u.vector)
-        # return self.solver.its, self.solver.converged

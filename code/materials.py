@@ -20,28 +20,52 @@ class HookesLaw:
     constraint: Constraint = Constraint.PLANE_STRESS
 
     @property
+    def qdim(self):
+        return {
+            Constraint.UNIAXIAL_STRAIN: 1,
+            Constraint.UNIAXIAL_STRESS: 1,
+            Constraint.PLANE_STRAIN: 3,
+            Constraint.PLANE_STRESS: 3,
+            Constraint.FULL: 6,
+        }[self.constraint]
+
+    @property
     def C(self):
         E, nu = self.E, self.nu
+
+        if self.constraint in [Constraint.UNIAXIAL_STRAIN, Constraint.UNIAXIAL_STRESS]:
+            return np.array([[E]])
+
         if self.constraint == Constraint.PLANE_STRESS:
             C11 = E / (1.0 - nu * nu)
             C12 = C11 * nu
             C33 = C11 * 0.5 * (1.0 - nu)
             return np.array([[C11, C12, 0.0], [C12, C11, 0.0], [0.0, 0.0, C33]])
-        elif self.constraint == Constraint.PLANE_STRAIN:
+
+        if self.constraint == Constraint.PLANE_STRAIN:
             l = E * nu / (1 + nu) / (1 - 2 * nu)
             m = E / (2.0 * (1 + nu))
             return np.array([[2 * m + l, l, 0], [l, 2 * m + l, 0], [0, 0, m]])
-        else:
-            raise NotImplementedError()
+
+        raise NotImplementedError()
 
     def eps(self, u):
         e = ufl.sym(ufl.grad(u))
         if self.constraint in [Constraint.PLANE_STRESS, Constraint.PLANE_STRAIN]:
-            return ufl.as_vector((e[0, 0], e[1, 1], 2 * e[0, 1]))
+            return ufl.as_vector([e[0, 0], e[1, 1], 2 * e[0, 1]])
+        if self.constraint in [Constraint.UNIAXIAL_STRAIN, Constraint.UNIAXIAL_STRESS]:
+            return ufl.as_vector([e[0, 0]])
+        if self.constraint == Constraint.FULL:
+            return ufl.as_vector(
+                [e[0, 0], e[1, 1], e[2, 2], 2 * e[1, 2], 2 * e[0, 2], 2 * e[0, 1]]
+            )
         raise NotImplementedError()
 
     def evaluate(self, strains):
-        eps = strains.reshape((-1, 3))
+        C = self.C
+        assert C.shape == (self.qdim, self.qdim)
+
+        eps = strains.reshape((-1, self.qdim))
         n_gauss = len(eps)
         return (eps @ self.C).flatten(), np.tile(self.C.flatten(), n_gauss)
 
@@ -61,12 +85,16 @@ def damage_exponential(mat, k):
 
 
 def modified_mises_strain_norm(mat, eps):
+    if mat.qdim == 1:
+        return eps.flatten(), np.ones((len(eps), 1))
+
+
     nu, k = mat.nu, mat.k
 
     K1 = (k - 1.0) / (2.0 * k * (1.0 - 2.0 * nu))
     K2 = 3.0 / (k * (1.0 + nu) ** 2)
 
-    exx, eyy, exy = eps[:,0], eps[:,1], eps[:,2]
+    exx, eyy, exy = eps[:, 0], eps[:, 1], eps[:, 2]
     I1 = exx + eyy
     J2 = 1.0 / 6.0 * ((exx - eyy) ** 2 + exx ** 2 + eyy ** 2) + (0.5 * exy) ** 2
 
@@ -78,9 +106,9 @@ def modified_mises_strain_norm(mat, eps):
     dJ2dexy = 0.5 * exy
 
     deeq = np.empty_like(eps)
-    deeq[:,0] = K1 + 1.0 / (2 * A) * (2 * K1 * K1 * I1 + K2 * dJ2dexx)
-    deeq[:,1] = K1 + 1.0 / (2 * A) * (2 * K1 * K1 * I1 + K2 * dJ2deyy)
-    deeq[:,2] = 1.0 / (2 * A) * (K2 * dJ2dexy)
+    deeq[:, 0] = K1 + 1.0 / (2 * A) * (2 * K1 * K1 * I1 + K2 * dJ2dexx)
+    deeq[:, 1] = K1 + 1.0 / (2 * A) * (2 * K1 * K1 * I1 + K2 * dJ2deyy)
+    deeq[:, 2] = 1.0 / (2 * A) * (K2 * dJ2dexy)
     return eeq, deeq
 
 
@@ -101,6 +129,14 @@ class LocalDamage(HookesLaw):
     # damage law
     dmg: None = damage_exponential
 
+    @property
+    def k0(self):
+        return self.ft / self.E
+
+    @property
+    def Gf(self):
+        return self.ft / self.beta
+    
     def evaluate(self, strains):
         """
         sigma = (1-w(k(|eps|))) * C : eps
@@ -111,20 +147,19 @@ class LocalDamage(HookesLaw):
                                 -----------------------------------------
                                               row_wise_outer \in R3x3
         """
-        eps = strains.reshape(-1, 3)
+        eps = strains.reshape(-1, self.qdim)
         n_gauss = len(eps)
 
         eeq, deeq = modified_mises_strain_norm(self, eps)
         kappa, dkappa = self.kappa_kkt(eeq)
         w, dw = self.dmg(self, kappa)
-      
-        print(f"{np.max(w)}")
+
         C = self.C
         sigma = eps @ C * (1 - w)[:, None]
         dsigma = np.tile(C.flatten(), (n_gauss, 1)) * (1 - w)[:, None]
-        
+
         P1 = eps @ C * dw[:, None] * dkappa[:, None]
-        
+
         # dont ask... https://stackoverflow.com/questions/48498662/numpy-row-wise-outer-product-of-two-matrices
         row_wise_outer = np.matmul(deeq[:, :, None], P1[:, None, :])
         # row_wise_outer = np.matmul(P1[:, :, None], deeq[:, None, :])
@@ -141,6 +176,6 @@ class LocalDamage(HookesLaw):
         return kappa, dkappa
 
     def update(self, strains):
-        eps = strains.reshape(-1, 3)
+        eps = strains.reshape(-1, self.qdim)
         eeq, deeq = modified_mises_strain_norm(self, eps)
         self.kappa, dkappa = self.kappa_kkt(eeq)
