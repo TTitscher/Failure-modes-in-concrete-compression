@@ -149,8 +149,26 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
         )
 
     def solve():
-        snes.solve(None, problem.u.vector)
+        with df.common.Timer("SNES solve"):
+            snes.solve(None, problem.u.vector)
         return snes.its, snes.converged
 
 
     return snes, solve
+
+class MeasurementSystem(dict):
+    def __init__(self):
+        super().__init__()
+        self._sensors = []
+
+    def add(self, sensor):
+        assert sensor.name not in self
+        self._sensors.append(sensor)
+        self[sensor.name] = []
+
+    def measure(self):
+        for sensor in self._sensors:
+            self[sensor.name].append(sensor.measure())
+
+def list_timings():
+    df.common.list_timings(MPI.COMM_WORLD, [df.common.TimingType.wall], df.common.Reduction.average)

@@ -12,37 +12,23 @@ from problem import MechanicsProblem
 
 import matplotlib.pyplot as plt
 
-class MeasurementSystem(dict):
-    def __init__(self):
-        super().__init__()
-        self._sensors = []
-
-    def add(self, sensor):
-        assert sensor.name not in self
-        self._sensors.append(sensor)
-        self[sensor.name] = []
-
-    def measure(self):
-        for sensor in self._sensors:
-            self[sensor.name].append(sensor.measure())
-
 def main():
 
     experiment = _exp.BendingThreePoint()
     # experiment = _exp.UnitSquareExperiment(10)
-    mat = _mat.LocalDamage(E=20000., nu=0.0,ft=4,beta=10, constraint=_mat.Constraint.PLANE_STRESS)
+    mat = _mat.LocalDamage(E=20000., nu=0.2,ft=4,beta=10, constraint=_mat.Constraint.PLANE_STRAIN)
     # mat = _mat.HookesLaw(E=20000., nu=0.2, constraint=_mat.Constraint.PLANE_STRESS)
     problem = MechanicsProblem(experiment, mat, deg=1, q_deg=1)
     # return
 
-    storage = MeasurementSystem()
+    storage = _h.MeasurementSystem()
     storage.add(_exp.LoadSensor(experiment.load_dofs, problem.residual, name="load"))
     storage.add(_exp.DisplacementSensor(experiment.load_bc, name="disp"))
 
     f = df.io.XDMFFile(experiment.mesh.comm, "displacements.xdmf", "w")
     f.write_mesh(experiment.mesh)
 
-    snes, snes_solve = _h.create_solver(problem, iterative=False, monitor_krylov=True, linesearch="bt")
+    snes, snes_solve = _h.create_solver(problem, iterative=False, monitor_krylov=True, linesearch="basic")
  
     u_bu = problem.u.copy()
 

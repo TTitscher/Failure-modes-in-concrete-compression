@@ -28,16 +28,48 @@ class DisplacementSensor:
 class Experiment:
     pass
 
-def _point_at(px, py):
+def _point_at(p):
+    p = np.atleast_1d(p)
     def boundary(x):
-        return np.logical_and(np.isclose(x[0], px), np.isclose(x[1], py))
+        condition = np.isclose(x[0], p[0])
+        # check remaining coordinates
+        for i in range(1, len(p)):
+            condition = np.logical_and(condition, np.isclose(x[i], p[i]))
+        return condition
 
     return boundary
 
+class UniaxialTruss(Experiment):
+    def __init__(self, N=10, L=1.):
+        self.L = L
+        self.mesh = df.mesh.create_interval(MPI.COMM_WORLD, N, [0., L])
+        self.u_bc = df.fem.Constant(self.mesh, 0.0)
+
+    def get_bcs(self, V):
+        mesh = self.mesh
+        b_facets_l = df.mesh.locate_entities_boundary(mesh, 0, _point_at(0))
+        b_facets_r = df.mesh.locate_entities_boundary(mesh, 0, _point_at(self.L))
+
+        b_dofs_l = df.fem.locate_dofs_topological(V.sub(0), 0, b_facets_l)
+        b_dofs_r = df.fem.locate_dofs_topological(V.sub(0), 0, b_facets_r)
+        # print(b_dofs_o)
+
+        self.bcs = [
+            df.fem.dirichletbc(PETSc.ScalarType(0), b_dofs_l, V.sub(0)),
+            df.fem.dirichletbc(self.u_bc, b_dofs_r, V.sub(0)),
+        ]
+
+        self.load_dofs = b_dofs_r
+        self.load_bc = self.bcs[1]
+        return self.bcs
+
+    def set_bcs(self, value):
+        self.u_bc.value = value
+
 class UnitSquareExperiment(Experiment):
-    def __init__(self, N):
+    def __init__(self, N, cell_type=df.mesh.CellType.triangle):
         self.mesh = df.mesh.create_unit_square(
-            MPI.COMM_WORLD, N, N, df.mesh.CellType.triangle
+            MPI.COMM_WORLD, N, N, cell_type
         )
         self.u_bc = df.fem.Constant(self.mesh, 0.0)
 
@@ -53,7 +85,7 @@ class UnitSquareExperiment(Experiment):
         dim = self.mesh.topology.dim - 1
         b_facets_l = df.mesh.locate_entities_boundary(mesh, dim, left)
         b_facets_r = df.mesh.locate_entities_boundary(mesh, dim, right)
-        b_facets_o = df.mesh.locate_entities_boundary(mesh, dim - 1, _point_at(0,0))
+        b_facets_o = df.mesh.locate_entities_boundary(mesh, dim - 1, _point_at((0,0)))
 
         b_dofs_l = df.fem.locate_dofs_topological(V.sub(0), dim, b_facets_l)
         b_dofs_r = df.fem.locate_dofs_topological(V.sub(0), dim, b_facets_r)
@@ -86,9 +118,9 @@ class BendingThreePoint(Experiment):
 
         mesh = self.mesh
         # l,r,t = left, right, top
-        b_facets_l = df.mesh.locate_entities_boundary(mesh, 0, _point_at(0,0))
-        b_facets_r = df.mesh.locate_entities_boundary(mesh, 0, _point_at(self.lx, 0))
-        b_facets_t = df.mesh.locate_entities_boundary(mesh, 0, _point_at(self.lx/2, self.ly))
+        b_facets_l = df.mesh.locate_entities_boundary(mesh, 0, _point_at((0,0)))
+        b_facets_r = df.mesh.locate_entities_boundary(mesh, 0, _point_at((self.lx, 0)))
+        b_facets_t = df.mesh.locate_entities_boundary(mesh, 0, _point_at((self.lx/2, self.ly)))
 
         b_dofs_lx = df.fem.locate_dofs_topological(V.sub(0), 0, b_facets_l)
         b_dofs_ly = df.fem.locate_dofs_topological(V.sub(1), 0, b_facets_l)
@@ -120,6 +152,7 @@ if __name__ == "__main__":
     all_experiments = []
     all_experiments.append(UnitSquareExperiment(5))
     all_experiments.append(BendingThreePoint())
+    all_experiments.append(UniaxialTruss())
 
     for exp in all_experiments:
 

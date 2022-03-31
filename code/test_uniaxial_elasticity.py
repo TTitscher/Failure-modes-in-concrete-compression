@@ -12,7 +12,7 @@ import materials as _mat
 from problem import MechanicsProblem
 
 
-experiment = _exp.UnitSquareExperiment(10)
+experiment = _exp.UnitSquareExperiment(20)
 mat = _mat.HookesLaw(20000, 0.2)
 problem = MechanicsProblem(experiment, mat)
 
@@ -22,7 +22,8 @@ u_bc = 42.0
 experiment.set_bcs(u_bc)
 
 df.cpp.log.set_log_level(df.cpp.log.LogLevel.INFO)
-problem.solve()
+snes, solve = _h.create_solver(problem, iterative=True)
+solve()
 df.cpp.log.set_log_level(df.cpp.log.LogLevel.WARNING)
 # solver.solve(None, problem.u.vector)
 
@@ -38,8 +39,11 @@ u_fem, xs = _h.eval_function_at_points(u, xs)
 
 u_ref = np.array([xs[:, 0] * u_bc, -mat.nu * xs[:, 1] * u_bc]).T
 
-assert np.linalg.norm(u_fem - u_ref) < 1.0e-10
+print(np.max(np.abs(u_fem - u_ref)))
+assert np.max(np.abs(u_fem - u_ref)) < 1.0e-8
 
 f = df.io.XDMFFile(experiment.mesh.comm, "displacements.xdmf", "w")
 f.write_mesh(experiment.mesh)
 f.write_function(u)
+
+_h.list_timings()

@@ -13,7 +13,7 @@ class MechanicsProblem:
         mesh = experiment.mesh
 
         # define function spaces
-        q_deg = deg + 1 if q_deg is None else q_deg
+        q_deg = 2*deg if q_deg is None else q_deg
 
         self.V = df.fem.VectorFunctionSpace(mesh, ("P", deg))
         QV = ufl.VectorElement(
@@ -65,11 +65,14 @@ class MechanicsProblem:
         self.solver = None
 
     def evaluate_constitutive_law(self):
-        self.strain = self.strain_expr.eval(self.cells)
-        self.q_sigma.x.array[:], self.q_dsigma.x.array[:] = (
-            sigma,
-            dsigma,
-        ) = self.material.evaluate(self.strain)
+        with df.common.Timer("compute strains"):
+            self.strain = self.strain_expr.eval(self.cells)
+
+        with df.common.Timer("evaluate constitutive law"):
+            sigma, dsigma =  self.material.evaluate(self.strain)
+        
+        with df.common.Timer("assign q space"):
+            self.q_sigma.x.array[:], self.q_dsigma.x.array[:] = sigma, dsigma
 
     def update(self):
         self.strain = self.strain_expr.eval(self.cells)
