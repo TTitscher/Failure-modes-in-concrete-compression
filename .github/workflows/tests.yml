@@ -10,7 +10,7 @@ jobs:
             - uses: actions/checkout@v2
             - name: Install dependencies
               run: | 
-                  pip3 install pytest matplotlib
+                  pip3 install pytest matplotlib hypothesis tqdm
             - name: Run the tests
               run: | 
                   cd code 
