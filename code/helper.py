@@ -166,7 +166,7 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
 
     if not iterative:
         snes.getKSP().setType("preonly")
-        snes.getKSP().setTolerances(rtol=1.e-10)
+        snes.getKSP().setTolerances(rtol=1.e-10, atol=1.e-10)
         snes.getKSP().getPC().setType("lu")
 
     snes.setMonitor(
