@@ -105,9 +105,9 @@ class MechanicsProblem:
             self.q_deeq_deps.x.array[:] = self.mat.deeq.flat
 
     def update(self):
-        strain = self.strain_expr.eval(self.cells)
+        # strain = self.strain_expr.eval(self.cells)
         e = self.e_expr.eval(self.cells)
-        self.mat.update(self.strain, e)
+        self.mat.update(e)
 
     def form(self, x: PETSc.Vec):
         """This function is called before the residual or Jacobian is
@@ -156,7 +156,7 @@ class MechanicsProblem:
 
 experiment = _exp.BendingThreePoint()
 mat = _mat.GradientDamage(l=200**0.5, nu=0.2, ft=2., k=10, alpha=0.99, beta=100.)
-problem = MechanicsProblem(experiment, mat, deg=2)
+problem = MechanicsProblem(experiment, mat, deg=2, q_deg=4)
 
 storage = _h.MeasurementSystem()
 storage.add(_exp.LoadSensor(experiment.load_dofs, problem.residual, name="load"))
@@ -167,7 +167,7 @@ f.write_mesh(experiment.mesh)
 
 
 # snes, solve_method = _h.create_solver(problem, iterative=False, monitor_newton=True, linesearch="bt")
-snes, solve_method = _h.create_solver(problem, iterative=False, monitor_newton=True, linesearch="bt")
+snes, solve_method = _h.create_solver(problem, iterative=False, monitor_newton=True, linesearch="basic")
 # solve_method = problem.solve
 
 u_bc = 3.0
@@ -177,13 +177,14 @@ def solve(t, dt):
     return solve_method()
 
 def pp(t):
+    problem.update()
     f.write_function(problem.u.sub(0), t)
     storage.measure()
 
 t = TimeStepper(solve, pp, problem.u)
-t.adaptive(t_end=1, dt=0.01, show_bar=True)
+t.adaptive(t_end=1, dt=0.1, show_bar=True)
 
-plt.plot(storage["disp"], storage["load"], "-kx")
+# plt.plot(storage["disp"], storage["load"], "-kx")
 # plt.show()
 
 # d

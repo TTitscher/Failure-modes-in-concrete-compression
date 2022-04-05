@@ -208,6 +208,6 @@ class GradientDamage(LocalDamage):
         return np.maximum(e, self.kappa)
 
     def update(self, e):
-        self.kappa = self.kappa_kkt(e)
+        self.kappa = self.kappa_kkt(e.flat)
 
 

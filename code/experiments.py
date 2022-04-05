@@ -110,7 +110,7 @@ class BendingThreePoint(Experiment):
     def __init__(self, lx=2000, ly=300, nx=100, ny=15):
         self.lx, self.ly = lx, ly
         self.mesh = df.mesh.create_rectangle(
-            MPI.COMM_WORLD, [[0, 0], [lx, ly]], [nx, ny], df.mesh.CellType.triangle
+            MPI.COMM_WORLD, [[0, 0], [lx, ly]], [nx, ny], df.mesh.CellType.quadrilateral
         )
         self.u_bc = df.fem.Constant(self.mesh, 0.0)
 
