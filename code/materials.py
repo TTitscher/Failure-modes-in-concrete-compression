@@ -179,3 +179,35 @@ class LocalDamage(HookesLaw):
         eps = strains.reshape(-1, self.qdim)
         eeq, deeq = modified_mises_strain_norm(self, eps)
         self.kappa, dkappa = self.kappa_kkt(eeq)
+
+@dataclass
+class GradientDamage(LocalDamage):
+    l: float = 2.
+
+    def evaluate(self, strains, e_):
+        eps = strains.reshape(-1, self.qdim)
+        e = e_.flatten()
+        
+        kappa = self.kappa_kkt(e)
+        dkappa_de = (e >= kappa).astype(int)
+        
+        w, dw = self.dmg(self, kappa)
+    
+        C = self.C
+        self.sigma = eps @ C * (1 - w)[:, None]
+
+        self.dsigma_deps = np.tile(C.flatten(), (len(kappa), 1)) * (1 - w)[:, None]
+        self.dsigma_de = -eps @ C * dw[:, None] * dkappa_de[:, None]
+        self.eeq, self.deeq = modified_mises_strain_norm(self, eps)
+
+
+    def kappa_kkt(self, e):
+        if self.kappa is None:
+            self.kappa = self.ft / self.E
+
+        return np.maximum(e, self.kappa)
+
+    def update(self, e):
+        self.kappa = self.kappa_kkt(e)
+
+

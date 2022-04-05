@@ -107,10 +107,10 @@ class UnitSquareExperiment(Experiment):
 
 
 class BendingThreePoint(Experiment):
-    def __init__(self, lx=200, ly=30, nx=100, ny=15):
+    def __init__(self, lx=2000, ly=300, nx=100, ny=15):
         self.lx, self.ly = lx, ly
         self.mesh = df.mesh.create_rectangle(
-            MPI.COMM_WORLD, [[0, 0], [lx, ly]], [nx, ny], df.mesh.CellType.triangle, diagonal=df.mesh.DiagonalType.crossed
+            MPI.COMM_WORLD, [[0, 0], [lx, ly]], [nx, ny], df.mesh.CellType.triangle
         )
         self.u_bc = df.fem.Constant(self.mesh, 0.0)
 
@@ -127,11 +127,6 @@ class BendingThreePoint(Experiment):
         b_dofs_r = df.fem.locate_dofs_topological(V.sub(1), 0, b_facets_r)
         b_dofs_t = df.fem.locate_dofs_topological(V.sub(1), 0, b_facets_t)
         # print(b_dofs_o)
-
-        assert len(b_dofs_lx) == 1
-        assert len(b_dofs_ly) == 1
-        assert len(b_dofs_r) == 1
-        assert len(b_dofs_t) == 1
 
         self.bcs = [
             df.fem.dirichletbc(PETSc.ScalarType(0), b_dofs_lx, V.sub(0)),

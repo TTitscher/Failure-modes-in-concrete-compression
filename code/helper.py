@@ -129,7 +129,7 @@ def eval_function_at_points(f, points):
     return f.eval(points_on_proc, cells), points_on_proc
 
 
-def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=False):
+def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=False, monitor_newton=True):
     snes = PETSc.SNES().create()
 
     def snes_J(snes, x, A, P):
@@ -169,12 +169,13 @@ def create_solver(problem, iterative=False, linesearch="basic", monitor_krylov=F
         snes.getKSP().setTolerances(rtol=1.e-10, atol=1.e-10)
         snes.getKSP().getPC().setType("lu")
 
-    snes.setMonitor(
-        lambda _, its, rnorm: print(f"  Newton: {its}, |R|/|R0| = {rnorm:6.3e}")
-    )
+    if monitor_newton:
+        snes.setMonitor(
+            lambda _, its, rnorm: print0(f"  Newton: {its}, |R|/|R0| = {rnorm:6.3e}")
+        )
     if monitor_krylov:
         snes.getKSP().setMonitor(
-            lambda _, its, rnorm: print(f"    krylov: {its}, |R|/|R0| = {rnorm:6.3e}")
+            lambda _, its, rnorm: print0(f"    krylov: {its}, |R|/|R0| = {rnorm:6.3e}")
         )
 
     def solve():
